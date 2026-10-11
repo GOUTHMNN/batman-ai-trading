@@ -401,6 +401,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     config = load_config()
+    _EMAIL_READY = all(config.get(k) for k in ("email_from", "email_to", "email_password"))
 
     ticker = st.text_input("🎯 Ticker Symbol", value=config.get("ticker", "AAPL"), help="e.g., AAPL, TSLA, BTC-USD")
     st.markdown("---")
@@ -433,6 +434,13 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════════
 # MAIN CONTENT — TABS
 # ═══════════════════════════════════════════════════════════
+
+st.warning(
+    "Research demo, not financial advice. In honest walk-forward testing this model showed no "
+    "edge over simply predicting \"down\" every day (balanced accuracy 50.4%). "
+    "Details: github.com/GOUTHMNN/batman-ai-trading",
+    icon="⚠️",
+)
 
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "OVERVIEW", "TRAIN", "SIGNALS", "BACKTEST", "PATROL", "SCANNER"
@@ -668,11 +676,12 @@ with tab5:
         <div class="gothic-card">
              <div style="width:24px; float:left; margin-right:10px;">{BAT_MAIL_SVG}</div>
             <h3 style="color:#00aaff; margin-top:0;">Alerts</h3>
-            <p style="color:#e0e0e0;">To: {config.get("email_to", "???")}</p>
+            <p style="color:#e0e0e0;">Email alerts: {"configured" if _EMAIL_READY else "not configured on this server"}</p>
         </div>
         """, unsafe_allow_html=True)
 
-    if st.button("🦇 RUN MANUAL PATROL (Execute Pipeline)"):
+    if st.button("🦇 RUN MANUAL PATROL (Execute Pipeline)", disabled=not _EMAIL_READY,
+                 help=None if _EMAIL_READY else "Needs BATMAN_EMAIL_* environment variables; disabled on the public demo."):
          try:
              from deploy_night_patrol import daily_patrol
              with st.spinner("🌙 Executing patrol..."):
