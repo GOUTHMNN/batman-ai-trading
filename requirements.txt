@@ -1,0 +1,14 @@
+numpy
+pandas
+scikit-learn
+scipy
+xgboost
+torch
+ta
+yfinance
+pyyaml
+joblib
+matplotlib
+schedule
+streamlit
+pytest

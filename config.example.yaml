@@ -1,0 +1,56 @@
+# Copy to config.yaml to customise. Secrets belong in environment variables, not here.
+account_balance: 1000
+alpha_vantage_key: ''        # set ALPHA_VANTAGE_KEY env var instead
+aux_tickers:
+- GC=F
+- SI=F
+batch_size: 32
+bb_period: 20
+bb_std: 2
+buy_threshold: 1.0
+commission: 0.001
+data_csv_path: data.csv
+data_fetch_start: '2020-01-01'
+data_start: '2020-01-01'
+dense_units: 64
+dropout: 0.3
+email_from: ''               # or BATMAN_EMAIL_FROM
+email_password: ''           # or BATMAN_EMAIL_PASSWORD (Gmail app password)
+email_to: ''                 # or BATMAN_EMAIL_TO
+epochs: 50
+learning_rate: 0.0002
+lookback: 60
+lstm_units_1: 100
+lstm_units_2: 40
+macd_fast: 12
+macd_signal: 9
+macd_slow: 26
+metal_sma_period: 5
+min_accuracy_target: 0.6
+model_path: batman_lstm.h5
+newsapi_key: ''              # set NEWSAPI_KEY env var instead
+patience: 25
+prediction_type: binary
+prob_threshold: 0.75
+retrain_step_days: 30
+risk_free_rate: 0.02
+risk_pct: 0.01
+rsi_period: 14
+scalers_path: scalers.pkl
+schedule_time: 03:00
+sell_threshold: 1.0
+sentiment_threshold: 0.2
+sequences_path: sequences.npz
+slippage: 0.0005
+sma_long: 200
+sma_short: 50
+smtp_port: 587
+smtp_server: smtp.gmail.com
+stop_loss_pct: 0.015
+take_profit_pct: 0.03
+test_pct: 0.1
+ticker: USAS
+train_pct: 0.8
+train_window_days: 252
+val_pct: 0.1
+volume_threshold: 1.5

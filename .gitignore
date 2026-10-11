@@ -1,0 +1,24 @@
+# Secrets and local settings
+config.yaml
+.env
+
+# Data, models and run artefacts (rebuild locally)
+data.csv
+sequences.npz
+*.pkl
+*.bak
+*.h5
+*.pt
+batman_xgb.json
+trade_log.txt
+*.log
+xgb_log.txt
+backtest_plot.png
+eval_plot.png
+walk_forward_results.png
+
+# Python
+.venv/
+venv/
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,44 @@
+{
+  "ticker": "USAS",
+  "test_days": 1087,
+  "test_period": [
+    "2021-10-15",
+    "2026-02-13"
+  ],
+  "share_of_up_days": 0.4002,
+  "results": [
+    {
+      "model": "Always predict the majority class (down)",
+      "accuracy": 0.5998,
+      "balanced_accuracy": 0.5,
+      "f1_up": 0.0,
+      "share_predicted_up": 0.0,
+      "roc_auc": null
+    },
+    {
+      "model": "Repeat yesterday's direction",
+      "accuracy": 0.5014,
+      "balanced_accuracy": 0.4807,
+      "f1_up": 0.377,
+      "share_predicted_up": 0.4002,
+      "roc_auc": null
+    },
+    {
+      "model": "XGBoost, original settings",
+      "accuracy": 0.5971,
+      "balanced_accuracy": 0.5054,
+      "f1_up": 0.0837,
+      "share_predicted_up": 0.0396,
+      "roc_auc": 0.5452
+    },
+    {
+      "model": "XGBoost, class-balanced",
+      "accuracy": 0.5409,
+      "balanced_accuracy": 0.5045,
+      "f1_up": 0.3594,
+      "share_predicted_up": 0.3165,
+      "roc_auc": 0.5055
+    }
+  ],
+  "balanced_model_vs_majority_p_value": 1.0
+}
