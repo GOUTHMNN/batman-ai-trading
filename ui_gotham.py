@@ -1,782 +1,342 @@
 """
-🦇 BATMAN AI TRADING SYSTEM — GOTHAM CITY DASHBOARD
-======================================================
-Streamlit app with full Batman/Gotham dark theme.
-Replaced ALL icons with lethal custom SVG vectors.
-NO MERCY.
+Batman AI · Signal Lab
+A research dashboard: walk-forward ML signals tested against simple baselines.
+Run locally:  streamlit run ui_gotham.py
 """
 
-import os
-import sys
-import io
-import time
-import logging
-from datetime import datetime
+import html
+import warnings
 
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
-import yaml
 
-# Ensure project root is on path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import app_core as core
+from data_pipeline import load_config
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+warnings.filterwarnings("ignore")
 
-# ─── Page Config (MUST be first Streamlit command) ───
-st.set_page_config(
-    page_title="🦇 Batman AI Trading",
-    page_icon="🦇",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="Batman AI · Signal Lab", page_icon="📈", layout="wide",
+                   initial_sidebar_state="expanded")
 
-# ═══════════════════════════════════════════════════════════
-# LETHAL SVG ASSETS
-# ═══════════════════════════════════════════════════════════
+# ─────────────────────────── design tokens ───────────────────────────
+INK, MUTE, LINE, PANEL, BG = "#eeebe4", "#9aa1ad", "#262b36", "#12151b", "#0a0c10"
+PURPLE, GREEN, RED, AMBER = "#b18cff", "#3ddc84", "#ff5d5d", "#ffc53d"
 
-# Color Palette: #111111 (stroke), #f1c40f (accent)
-# viewBox="0 0 24 24"
-
-BAT_LOGO_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M2 12C2 12 5 4 12 4C19 4 22 12 22 12" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M12 18L10 14H14L12 18Z" fill="#f1c40f"/>
-<path d="M2 12C4 16 8 18 12 18C16 18 20 16 22 12" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M7 8L8 10M17 8L16 10" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-</svg>"""
-
-BAT_SIGNAL_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<circle cx="12" cy="12" r="9" stroke="#f1c40f" stroke-width="1.5"/>
-<path d="M12 7V3M3 12H7M21 12H17M12 21V17" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12" stroke="#f1c40f" stroke-width="1.5" stroke-dasharray="2 2"/>
-</svg>"""
-
-BAT_GEAR_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="#f1c40f" stroke-width="1.5"/>
-<path d="M19.4 15L20.4 17.5L18 19.5L15.6 18.5C15 19 14.4 19.4 13.8 19.8L13.5 22.5H10.5L10.2 19.8C9.6 19.4 9 19 8.4 18.5L6 19.5L3.6 17.5L4.6 15C4.2 14.4 3.9 13.8 3.6 13.2L1 12.5V9.5L3.6 8.8C3.9 8.2 4.2 7.6 4.6 7L3.6 4.5L6 2.5L8.4 3.5C9 3 9.6 2.6 10.2 2.2L10.5 -0.5H13.5L13.8 2.2C14.4 2.6 15 3 15.6 3.5L18 2.5L20.4 4.5L19.4 7C19.8 7.6 20.1 8.2 20.4 8.8L23 9.5V12.5L20.4 13.2C20.1 13.8 19.8 14.4 19.4 15Z" stroke="#f1c40f" stroke-width="1.5" stroke-linejoin="round"/>
-</svg>"""
-
-BAT_HEAD_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M4 14C4 18 8 21 12 21C16 21 20 18 20 14V8L17 5L12 9L7 5L4 8V14Z" stroke="#f1c40f" stroke-width="1.5"/>
-<path d="M8 13L10 15L16 9" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-
-BAT_CHART_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M3 21H21" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M7 21V14" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M12 21V10" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M17 21V6" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M7 10L12 6L17 2" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/>
-</svg>"""
-
-BAT_CLOCK_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<circle cx="12" cy="12" r="9" stroke="#f1c40f" stroke-width="1.5"/>
-<path d="M12 7V12L15 15" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-<path d="M12 3V5" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
-</svg>"""
-
-BAT_MAIL_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="3" y="5" width="18" height="14" rx="2" stroke="#f1c40f" stroke-width="1.5"/>
-<path d="M3 7L12 13L21 7" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-
-SIGNAL_BUY_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M12 19V5" stroke="#2ecc71" stroke-width="2" stroke-linecap="round"/>
-<path d="M5 12L12 5L19 12" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-
-SIGNAL_SELL_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M12 5V19" stroke="#c0392b" stroke-width="2" stroke-linecap="round"/>
-<path d="M19 12L12 19L5 12" stroke="#c0392b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>"""
-
-SIGNAL_HOLD_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M5 12H19" stroke="#f1c40f" stroke-width="2" stroke-linecap="round"/>
-</svg>"""
-
-
-# ═══════════════════════════════════════════════════════════
-# GOTHAM CSS — The Dark Knight Theme
-# ═══════════════════════════════════════════════════════════
-
-GOTHAM_CSS = """
+st.markdown(f"""
 <style>
-    /* ─── Google Fonts ─── */
-    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Roboto+Condensed:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap');
+:root {{ --ink:{INK}; --mute:{MUTE}; --line:{LINE}; --panel:{PANEL}; --bg:{BG}; --purple:{PURPLE}; --green:{GREEN}; --red:{RED}; --amber:{AMBER}; }}
+html, body, [class*="css"], .stApp, .stMarkdown, button, input, textarea, select {{ font-family: "Schibsted Grotesk", system-ui, sans-serif; }}
+.stApp {{ background: radial-gradient(1200px 600px at 85% -10%, rgba(177,140,255,.08), transparent 60%), var(--bg); color: var(--ink); }}
+#MainMenu, footer, header [data-testid="stToolbar"], [data-testid="stDecoration"] {{ visibility: hidden; height: 0; }}
+header[data-testid="stHeader"] {{ background: transparent; }}
+.block-container {{ padding-top: 1.6rem; padding-bottom: 4rem; max-width: 1240px; }}
+section[data-testid="stSidebar"] {{ background: #0d0f14; border-right: 1px solid var(--line); }}
+section[data-testid="stSidebar"] .block-container {{ padding-top: 1.2rem; }}
+h1, h2, h3 {{ font-family: "Big Shoulders Display", "Arial Narrow", sans-serif !important; text-transform: uppercase; letter-spacing: .01em; color: var(--ink); }}
+.mono, .eyebrow {{ font-family: "JetBrains Mono", ui-monospace, monospace; }}
+.eyebrow, [data-testid="stMarkdownContainer"] p.eyebrow {{ font-family:"JetBrains Mono", ui-monospace, monospace !important; font-size: .72rem !important; letter-spacing: .1em; text-transform: uppercase; color: var(--mute) !important; margin: 0 !important; line-height:1.5 !important; }}
+[data-testid="stMarkdownContainer"] p.note, .note {{ color: var(--mute); font-size:.85rem !important; line-height:1.55; }}
 
-    /* ─── Root Variables ─── */
-    :root {
-        --bg-primary: #0a0a0a;
-        --bg-secondary: #1a1a2e;
-        --bg-card: #16162a;
-        --bg-card-hover: #1e1e3a;
-        --shadow-gray: #2d2d44;
-        --accent-yellow: #f1c40f;
-        --accent-yellow-glow: rgba(241, 196, 15, 0.3);
-        --accent-blue: #00aaff;
-        --accent-blue-glow: rgba(0, 170, 255, 0.3);
-        --accent-red: #c0392b;
-        --accent-green: #2ecc71;
-        --text-primary: #e0e0e0;
-        --text-secondary: #888888;
-        --border-dark: #333333;
-    }
+/* header */
+.top {{ display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom: 1.2rem; }}
+.word, [data-testid="stMarkdownContainer"] p.word {{ font-family:"Big Shoulders Display","Arial Narrow",sans-serif !important; font-weight:900 !important; font-size: clamp(2.8rem, 1.8rem + 3.4vw, 4.8rem) !important; line-height:.85 !important; text-transform:uppercase; margin:8px 0 0 !important; letter-spacing:.005em; }}
+.word span {{ color: transparent; -webkit-text-stroke: 1.5px var(--ink); }}
+.top-links {{ display:flex; gap:8px; flex-wrap:wrap; }}
+.pill {{ display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background: rgba(18,21,27,.8); color: var(--ink) !important; text-decoration:none !important; font-size:.85rem; }}
+.pill:hover {{ border-color: var(--mute); }}
+.pill.warn {{ border-color: rgba(255,197,61,.45); color: var(--amber) !important; }}
+.dot {{ width:8px; height:8px; border-radius:50%; background: var(--green); box-shadow: 0 0 10px var(--green); }}
+.dot.sample {{ background: var(--amber); box-shadow: 0 0 10px var(--amber); }}
 
-    /* ─── Global ─── */
-    .stApp {
-        background-color: var(--bg-primary) !important;
-        color: var(--text-primary) !important;
-        font-family: 'Roboto Condensed', sans-serif !important;
-    }
+/* kpis */
+.kpis {{ display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:12px; margin: 4px 0 18px; }}
+@media (max-width: 900px) {{ .kpis {{ grid-template-columns: repeat(2, minmax(0,1fr)); }} }}
+.kpi {{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }}
+.kpi .v {{ font-family:"Big Shoulders Display",sans-serif; font-weight:800; font-size:2rem; line-height:1.05; margin-top:6px; font-variant-numeric: tabular-nums; }}
+.kpi .s {{ font-family:"JetBrains Mono",monospace; font-size:.75rem; color: var(--mute); margin-top:2px; }}
+.up {{ color: var(--green); }} .down {{ color: var(--red); }} .purple {{ color: var(--purple); }}
 
-    /* ─── Hide Streamlit Defaults ─── */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stDeployButton {display: none;}
+/* cards & verdict */
+.card {{ background: var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }}
+.verdict {{ border-radius:16px; padding:18px 20px; border:1px solid var(--line); display:flex; gap:14px; align-items:flex-start; margin-bottom: 14px; }}
+.verdict b {{ font-family:"Big Shoulders Display",sans-serif; font-size:1.5rem; text-transform:uppercase; letter-spacing:.01em; display:block; margin-bottom:4px; }}
+.verdict.good {{ background: rgba(61,220,132,.07); border-color: rgba(61,220,132,.4); }}
+.verdict.neutral {{ background: rgba(255,197,61,.07); border-color: rgba(255,197,61,.4); }}
+.verdict.bad {{ background: rgba(255,93,93,.06); border-color: rgba(255,93,93,.35); }}
+.signal {{ text-align:center; padding: 22px 16px; }}
+.signal .big {{ font-family:"Big Shoulders Display",sans-serif; font-weight:900; font-size:5rem; line-height:.9; }}
+.signal.BUY .big {{ color: var(--green); }} .signal.SELL .big {{ color: var(--red); }} .signal.HOLD .big {{ color: var(--ink); }}
+.gate {{ display:flex; justify-content:space-between; gap:12px; padding:11px 0; border-top:1px solid var(--line); font-size:.95rem; }}
+.gate:first-child {{ border-top:0; }}
+.gate .r {{ font-family:"JetBrains Mono",monospace; font-size:.8rem; color: var(--mute); text-align:right; }}
+.ok {{ color: var(--green); font-weight:700; }} .no {{ color: var(--red); font-weight:700; }}
+.rows {{ display:grid; gap:0; }}
+.rows div {{ display:flex; justify-content:space-between; padding:9px 0; border-top:1px solid var(--line); font-size:.95rem; }}
+.rows div:first-child {{ border-top:0; }}
+.rows span:last-child {{ font-family:"JetBrains Mono",monospace; }}
+.note {{ color: var(--mute); font-size:.85rem; }}
 
-    /* ─── Sidebar ─── */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0d0d1a 0%, #1a1a2e 50%, #0d0d1a 100%) !important;
-        border-right: 1px solid var(--border-dark) !important;
-    }
-    [data-testid="stSidebar"] .stMarkdown {
-        color: var(--text-primary) !important;
-    }
-
-    /* ─── Tabs ─── */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0px;
-        background-color: var(--bg-secondary) !important;
-        border-radius: 8px;
-        padding: 4px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: transparent !important;
-        color: var(--text-secondary) !important;
-        border: none !important;
-        border-radius: 6px !important;
-        padding: 10px 20px !important;
-        font-family: 'Oswald', sans-serif !important;
-        font-size: 14px !important;
-        font-weight: 500 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-        transition: all 0.3s ease !important;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        color: var(--accent-yellow) !important;
-        background-color: rgba(241, 196, 15, 0.1) !important;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: rgba(241, 196, 15, 0.15) !important;
-        color: var(--accent-yellow) !important;
-        box-shadow: 0 0 15px var(--accent-yellow-glow) !important;
-    }
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: var(--accent-yellow) !important;
-    }
-
-    /* ─── Metric Cards & SVG Icons ─── */
-    [data-testid="stMetric"] {
-        background: linear-gradient(135deg, var(--bg-card) 0%, var(--shadow-gray) 100%) !important;
-        border: 1px solid var(--border-dark) !important;
-        border-radius: 10px !important;
-        padding: 15px 20px !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
-        transition: all 0.3s ease !important;
-        position: relative;
-    }
-    [data-testid="stMetric"]:hover {
-        box-shadow: 0 0 20px var(--accent-blue-glow) !important;
-        border-color: var(--accent-blue) !important;
-        transform: translateY(-2px);
-    }
-    [data-testid="stMetricLabel"] {
-        color: var(--text-secondary) !important;
-        font-family: 'Roboto Condensed', sans-serif !important;
-        text-transform: uppercase !important;
-        font-size: 12px !important;
-        letter-spacing: 1px !important;
-    }
-    [data-testid="stMetricValue"] {
-        color: var(--accent-yellow) !important;
-        font-family: 'Oswald', sans-serif !important;
-        font-weight: 600 !important;
-    }
-
-    /* ─── Buttons with SVG Shim ─── */
-    .stButton > button {
-        background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--shadow-gray) 100%) !important;
-        color: var(--accent-yellow) !important;
-        border: 1px solid var(--accent-yellow) !important;
-        border-radius: 8px !important;
-        font-family: 'Oswald', sans-serif !important;
-        font-weight: 500 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 2px !important;
-        padding: 10px 25px !important;
-        transition: all 0.3s ease !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .stButton > button:hover {
-        background: linear-gradient(135deg, var(--accent-yellow) 0%, #e6b30e 100%) !important;
-        color: #000 !important;
-        box-shadow: 0 0 25px var(--accent-yellow-glow), 0 0 50px rgba(241, 196, 15, 0.15) !important;
-        transform: translateY(-1px) !important;
-    }
-
-    /* ─── Bat-Signal Pulse Button ─── */
-    .bat-signal-btn .stButton > button {
-        animation: batPulse 2s ease-in-out infinite !important;
-    }
-    @keyframes batPulse {
-        0%, 100% { box-shadow: 0 0 10px var(--accent-yellow-glow); }
-        50% { box-shadow: 0 0 30px var(--accent-yellow-glow), 0 0 60px rgba(241, 196, 15, 0.2); }
-    }
-
-    /* ──– SVG Utilities ─── */
-    .bat-icon {
-        width: 24px;
-        height: 24px;
-        display: inline-block;
-        vertical-align: middle;
-        margin-right: 8px;
-        filter: drop-shadow(0 0 2px var(--accent-yellow));
-    }
-    .bat-icon:hover {
-        filter: drop-shadow(0 0 8px var(--accent-yellow));
-        transform: scale(1.1);
-        transition: transform 0.2s;
-    }
-    .bat-icon-lg {
-        width: 64px;
-        height: 64px;
-        display: block;
-        margin: 0 auto 10px;
-        filter: drop-shadow(0 0 10px var(--accent-blue));
-    }
-
-    /* ─── Headers ─── */
-    h1, h2, h3 {
-        font-family: 'Oswald', sans-serif !important;
-        color: var(--accent-yellow) !important;
-        text-transform: uppercase !important;
-        letter-spacing: 2px !important;
-    }
-    h1 { font-size: 2.2rem !important; }
-    h2 { font-size: 1.6rem !important; color: var(--accent-blue) !important; }
-    h3 { font-size: 1.2rem !important; }
-
-    /* ─── Gotham Watermark ─── */
-    .stApp::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: radial-gradient(ellipse at 50% 30%, rgba(26, 26, 46, 0.4) 0%, transparent 70%);
-        pointer-events: none;
-        z-index: 0;
-    }
-
-    /* ─── Rain Overlay ─── */
-    .stApp::after {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-image: repeating-linear-gradient(
-            transparent,
-            transparent 2px,
-            rgba(0, 170, 255, 0.015) 2px,
-            rgba(0, 170, 255, 0.015) 4px
-        );
-        animation: rainFall 0.8s linear infinite;
-        pointer-events: none;
-        z-index: 0;
-    }
-    @keyframes rainFall {
-        0% { transform: translateY(0); }
-        100% { transform: translateY(4px); }
-    }
-    
-    /* ─── Gothic Card Container ─── */
-    .gothic-card {
-        background: linear-gradient(135deg, var(--bg-card) 0%, #12122a 100%);
-        border: 1px solid var(--border-dark);
-        border-radius: 12px;
-        padding: 25px;
-        margin: 10px 0;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        transition: all 0.3s ease;
-    }
-    .gothic-card:hover {
-        box-shadow: 0 0 25px var(--accent-blue-glow);
-        border-color: var(--accent-blue);
-    }
+/* streamlit widgets */
+[data-testid="stTab"] {{ padding: 10px 14px !important; }}
+[data-testid="stTab"] p {{ font-family:"JetBrains Mono",monospace !important; text-transform:uppercase; letter-spacing:.08em; font-size:.76rem !important; color: var(--mute); }}
+[data-testid="stTab"][aria-selected="true"] p, [data-testid="stTab"]:hover p {{ color: var(--ink) !important; }}
+.stButton > button, .stFormSubmitButton > button {{ border-radius: 999px; font-weight:600; border:1px solid var(--line); }}
+.stFormSubmitButton > button {{ background: var(--ink); color: var(--bg); border-color: var(--ink); width:100%; }}
+.stFormSubmitButton > button:hover {{ background:#fff; color: var(--bg); }}
+[data-testid="stDataFrame"] {{ border:1px solid var(--line); border-radius: 12px; }}
 </style>
-"""
-
-st.markdown(GOTHAM_CSS, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════
-# HELPER FUNCTIONS
-# ═══════════════════════════════════════════════════════════
-
-def load_config():
-    """Load settings via the shared loader (config file + env-var secrets)."""
-    try:
-        from data_pipeline import load_config as _load
-        return _load()
-    except Exception:
-        return {}
-
-def fig_to_streamlit(fig):
-    """Convert matplotlib figure to streamlit-compatible bytes."""
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=150, facecolor=fig.get_facecolor(), bbox_inches="tight")
-    buf.seek(0)
-    plt.close(fig)
-    return buf
-
-def create_price_chart(df, title="Price Chart"):
-    """Create a styled price chart."""
-    fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(df.index, df["Close"], color="#00aaff", linewidth=1.2, label="Close")
-    if "SMA_50" in df.columns:
-        ax.plot(df.index, df["SMA_50"], color="#f1c40f", linewidth=0.8, alpha=0.7, label="SMA 50")
-    if "SMA_200" in df.columns:
-        ax.plot(df.index, df["SMA_200"], color="#c0392b", linewidth=0.8, alpha=0.7, label="SMA 200")
-    if "BB_Upper" in df.columns and "BB_Lower" in df.columns:
-        ax.fill_between(df.index, df["BB_Lower"], df["BB_Upper"], alpha=0.08, color="#00aaff", label="BB")
-
-    ax.set_title(title, fontsize=14, fontweight="bold", color="#f1c40f", fontfamily="sans-serif")
-    ax.set_ylabel("Price", color="#e0e0e0")
-    ax.legend(loc="upper left", facecolor="#1a1a2e", edgecolor="#333", labelcolor="#e0e0e0", fontsize=9)
-    ax.set_facecolor("#0a0a0a")
-    fig.patch.set_facecolor("#0a0a0a")
-    ax.tick_params(colors="#e0e0e0")
-    ax.xaxis.label.set_color("#e0e0e0")
-    ax.yaxis.label.set_color("#e0e0e0")
-    for spine in ax.spines.values():
-        spine.set_color("#333333")
-    plt.tight_layout()
+def plot_layout(fig, height=380, legend=True):
+    fig.update_layout(
+        height=height, margin=dict(l=8, r=8, t=28, b=8), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Schibsted Grotesk, sans-serif", color=MUTE, size=12), hovermode="x unified",
+        showlegend=legend, legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, bgcolor="rgba(0,0,0,0)"),
+        hoverlabel=dict(bgcolor=PANEL, bordercolor=LINE, font=dict(color=INK, family="JetBrains Mono")),
+    )
+    fig.update_xaxes(gridcolor="#1b1f28", zeroline=False, showline=False)
+    fig.update_yaxes(gridcolor="#1b1f28", zeroline=False, showline=False)
     return fig
 
-def render_svg(svg_string, width=24, height=24, class_name="bat-icon"):
-    """Inject SVG directly via HTML."""
-    return f'<div class="{class_name}" style="width:{width}px; height:{height}px;">{svg_string}</div>'
 
-# ═══════════════════════════════════════════════════════════
-# SIDEBAR
-# ═══════════════════════════════════════════════════════════
+def pct(x, d=1, sign=True):
+    return "n/a" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x:+.{d}%}" if sign else f"{x:.{d}%}"
 
+
+# ─────────────────────────── cached work ───────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_data(ticker, start):
+    return core.load_market_data(ticker, start)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_walk_forward(ticker, start, train_window, retrain_every, balanced):
+    df, _ = get_data(ticker, start)
+    return core.walk_forward(df, train_window, retrain_every, balanced)
+
+
+# ───────────────────────────── sidebar ─────────────────────────────
+base_config = load_config()
 with st.sidebar:
-    st.markdown(f"""
-    <div style="text-align:center; padding:20px 0;">
-        <div style="width:80px; height:80px; margin:0 auto; filter:drop-shadow(0 0 10px #f1c40f);">
-            {BAT_LOGO_SVG}
-        </div>
-        <h1 style="font-size:1.8rem; margin:10px 0 5px; letter-spacing:4px;
-                   color:#f1c40f; font-family:'Oswald',sans-serif;">
-            BATMAN AI
-        </h1>
-        <p style="color:#888; font-size:13px; letter-spacing:2px;
-                  font-family:'Roboto Condensed',sans-serif; text-transform:uppercase;">
-            Trading System
-        </p>
-        <div style="width:60%; height:1px; background:linear-gradient(90deg,transparent,#f1c40f,transparent);
-                    margin:15px auto;"></div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<p class="eyebrow">Controls</p>', unsafe_allow_html=True)
+    with st.form("controls"):
+        ticker = st.text_input("Ticker", value=st.session_state.get("ticker", "USAS"),
+                               help="Any Yahoo Finance symbol, e.g. USAS, AAPL, NVDA, GLD, BTC-USD").strip().upper()
+        start = st.selectbox("History from", ["2018-01-01", "2020-01-01", "2022-01-01"], index=1)
+        st.markdown('<p class="eyebrow" style="margin-top:8px">Model</p>', unsafe_allow_html=True)
+        train_window = st.slider("Training window (trading days)", 126, 504, 252, 21)
+        retrain_every = st.slider("Retrain every (days)", 10, 60, 30, 5)
+        balanced = st.toggle("Balance up and down days", value=True,
+                             help="Without this, the model can look accurate by always predicting the more common direction.")
+        st.markdown('<p class="eyebrow" style="margin-top:8px">Strategy</p>', unsafe_allow_html=True)
+        threshold = st.slider("Go long when P(up) is at least", 0.50, 0.80, 0.55, 0.01)
+        strict = st.toggle("Also require metals, volume and sentiment filters", value=False)
+        cost_bps = st.slider("Trading cost per change (bps)", 0, 50, 15, 5)
+        st.markdown('<p class="eyebrow" style="margin-top:8px">Risk</p>', unsafe_allow_html=True)
+        account = st.number_input("Account size (£)", 100, 1_000_000, int(base_config.get("account_balance", 1000)), 100)
+        risk_pct = st.slider("Risk per trade", 0.005, 0.03, float(base_config.get("risk_pct", 0.01)), 0.005, format="%.3f")
+        run = st.form_submit_button("Run analysis")
+    st.session_state["ticker"] = ticker
+    st.markdown(
+        '<p class="note" style="margin-top:14px">Research demo, not financial advice. Models are retrained on the fly '
+        'using only data available at each point in time.</p>', unsafe_allow_html=True)
 
-    config = load_config()
-    _EMAIL_READY = all(config.get(k) for k in ("email_from", "email_to", "email_password"))
+config = {**base_config, "account_balance": account, "risk_pct": risk_pct}
 
-    ticker = st.text_input("🎯 Ticker Symbol", value=config.get("ticker", "AAPL"), help="e.g., AAPL, TSLA, BTC-USD")
-    st.markdown("---")
+# ───────────────────────────── data ─────────────────────────────
+try:
+    with st.spinner(f"Loading {ticker} prices and building 45 features…"):
+        df, source = get_data(ticker, start)
+except Exception as e:
+    st.error(f"{e}\n\nCheck the ticker symbol and try again. USAS always works thanks to a bundled snapshot.")
+    st.stop()
 
-    st.markdown(f"""
-    <div style="background:#16162a; border-radius:8px; padding:15px; margin:10px 0; border:1px solid #333;">
-        <div style="display:flex; align-items:center; margin-bottom:10px;">
-            <div style="width:20px; margin-right:8px;">{BAT_GEAR_SVG}</div>
-            <p style="color:#888; font-size:12px; text-transform:uppercase; margin:0;">System Config</p>
-        </div>
-        <p style="color:#e0e0e0; font-size:13px; margin:4px 0;">
-            📊 Lookback: <span style="color:#00aaff;">{config.get("lookback", 60)}</span> days
-        </p>
-        <p style="color:#e0e0e0; font-size:13px; margin:4px 0;">
-            💰 Account: <span style="color:#2ecc71;">£{config.get("account_balance", 1000)}</span>
-        </p>
-        <p style="color:#e0e0e0; font-size:13px; margin:4px 0;">
-            ⚡ Risk: <span style="color:#f1c40f;">{config.get("risk_pct", 0.01)*100:.0f}%</span>
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+snap = core.market_snapshot(df)
 
-    st.markdown("---")
-    st.markdown("""
-    <p style="color:#555; font-size:11px; text-align:center; font-style:italic;">
-        "It's not who I am underneath,<br>but what I do that defines me."
-    </p>
-    """, unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════
-# MAIN CONTENT — TABS
-# ═══════════════════════════════════════════════════════════
-
-st.warning(
-    "Research demo, not financial advice. In honest walk-forward testing this model showed no "
-    "edge over simply predicting \"down\" every day (balanced accuracy 50.4%). "
-    "Details: github.com/GOUTHMNN/batman-ai-trading",
-    icon="⚠️",
-)
-
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "OVERVIEW", "TRAIN", "SIGNALS", "BACKTEST", "PATROL", "SCANNER"
-])
-
-# ... (Tabs 1-5 unmodified, skipped in this replacement block) ...
-# Actually, I cannot easily skip intermediate content efficiently with replace_file_content if chunks are far apart.
-# I will make TWO SEPARATE replace_file_content calls or one huge one.
-# Given the tool supports multiple chunks, I will use that feature.
-
-
-# ───────────────────────────────────────────────────────────
-# TAB 1: GOTHAM OVERVIEW
-# ───────────────────────────────────────────────────────────
-with tab1:
-    st.markdown(f"""
-    <div style="text-align:center; padding-bottom:20px;">
-        <div class="bat-icon-lg">{BAT_SIGNAL_SVG}</div>
-        <h1 style="margin-bottom:5px;">Gotham Overview</h1>
-        <p style="color:#888; letter-spacing:2px; text-transform:uppercase;">
-            Market Intelligence • {ticker} • {datetime.now().strftime("%Y-%m-%d")}
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_fetch, col_status = st.columns([1, 3])
-    with col_fetch:
-        fetch_btn = st.button("⚡ SCAN MARKET DATA", use_container_width=True)
-
-    if fetch_btn or st.session_state.get("data_fetched", False):
-        try:
-            from data_pipeline import fetch_data, engineer_features, handle_nans
-            with st.spinner("🦇 Scanning Gotham markets..."):
-                df = fetch_data(ticker, start=config.get("data_start", "2010-01-01"))
-                df = engineer_features(df, config)
-                df = handle_nans(df)
-                st.session_state["overview_df"] = df
-                st.session_state["data_fetched"] = True
-
-            latest = df.iloc[-1]
-            prev = df.iloc[-2]
-            change = ((latest["Close"] - prev["Close"]) / prev["Close"]) * 100
-
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Close", f"${latest['Close']:.2f}", f"{change:+.2f}%")
-            with c2: st.metric("RSI 14", f"{latest['RSI_14']:.1f}")
-            with c3: st.metric("MACD", f"{latest['MACD']:.3f}")
-            with c4: st.metric("Volume", f"{latest['Volume']:,.0f}")
-
-            st.markdown("---")
-            chart_df = df.tail(504)
-            fig = create_price_chart(chart_df, f"{ticker} — Last 2 Years")
-            st.image(fig_to_streamlit(fig), use_container_width=True)
-
-        except Exception as e:
-            st.error(f"❌ Failed to fetch data: {e}")
-
-# ───────────────────────────────────────────────────────────
-# TAB 2: TRAIN BATMAN
-# ───────────────────────────────────────────────────────────
-with tab2:
-    st.markdown(f"""
-    <div style="text-align:center; padding-bottom:20px;">
-        <div class="bat-icon-lg" style="filter:drop-shadow(0 0 10px #00aaff);">{BAT_GEAR_SVG}</div>
-        <h1 style="margin-bottom:5px;">Train Batman</h1>
-        <p style="color:#888; letter-spacing:2px; text-transform:uppercase;">
-            LSTM Neural Network Training
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    model_path = os.path.join(BASE_DIR, config.get("model_path", "batman_lstm.h5"))
-    model_exists = os.path.exists(model_path)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"""
-        <div class="gothic-card">
-            <h3 style="color:#00aaff; margin-top:0;">Active Engine</h3>
-            <p style="color:#e0e0e0;">Type: <span style="color:#f1c40f;">XGBoost (Gradient Boosting)</span></p>
-            <p style="color:#888; font-size:12px;">Benchmark Acc: <span style="color:#2ecc71;">60.3%</span> (Target)</p>
-            <p style="color:#555; font-size:10px;">*Training below creates a NEW LSTM model to challenge this benchmark.*</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-        <div class="gothic-card">
-            <h3 style="color:#00aaff; margin-top:0;">Config</h3>
-            <p style="color:#e0e0e0;">Epochs: {config.get('epochs', 50)} | Batch: {config.get('batch_size', 32)}</p>
-            <p style="color:#e0e0e0;">LR: {config.get('learning_rate', 0.0008)}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('<div class="bat-signal-btn">', unsafe_allow_html=True)
-    train_btn = st.button("🦇 EXECUTE TRAINING PROTOCOL", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if train_btn:
-        try:
-            from model_core import run_training, plot_loss
-            with st.spinner("🏋️ The Dark Knight is training..."):
-                result = run_training(ticker=ticker, config=config)
-                st.session_state["train_history"] = result["history"]
-                st.session_state["eval_results"] = result["eval_results"]
-
-            eval_r = result["eval_results"]
-            c1, c2 = st.columns(2)
-            c1.metric("Validation Accuracy", f"{eval_r['accuracy']:.1%}")
-            c2.metric("F1 Score", f"{eval_r['f1']:.3f}")
-
-            st.markdown("### 📉 Training Loss")
-            st.image(fig_to_streamlit(plot_loss(result["history"])), use_container_width=True)
-            st.success("🦇 The Dark Knight is trained and ready for battle!")
-
-        except Exception as e:
-            st.error(f"❌ Training failed: {e}")
-
-# ───────────────────────────────────────────────────────────
-# TAB 3: SIGNALS & ALERTS
-# ───────────────────────────────────────────────────────────
-with tab3:
-    st.markdown(f"""
-    <div style="text-align:center; padding-bottom:20px;">
-        <div class="bat-icon-lg">{BAT_HEAD_SVG}</div>
-        <h1 style="margin-bottom:5px;">Signals & Alerts</h1>
-        <p style="color:#888; letter-spacing:2px; text-transform:uppercase;">
-            AI-Powered Trading Signals
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="bat-signal-btn">', unsafe_allow_html=True)
-    predict_btn = st.button("🦇 ACTIVATE BAT-SIGNAL", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if predict_btn:
-        try:
-            from signals_risk import run_signal_pipeline
-            with st.spinner("🦇 Scanning Gotham for signals..."):
-                st.session_state["signal_result"] = run_signal_pipeline(ticker=ticker, config=config)
-        except Exception as e:
-            st.error(f"❌ Signal failed: {e}")
-
-    if "signal_result" in st.session_state:
-        res = st.session_state["signal_result"]
-        sig = res["signal"]
-        
-        # Determine SVG
-        sig_svg = SIGNAL_HOLD_SVG
-        color = "#f1c40f"
-        if sig == "BUY":
-            sig_svg = SIGNAL_BUY_SVG
-            color = "#2ecc71"
-        elif sig == "SELL":
-            sig_svg = SIGNAL_SELL_SVG
-            color = "#c0392b"
-
-        st.markdown(f"""
-        <div style="border:2px solid {color}; border-radius:12px; padding:20px; text-align:center;
-                    background:linear-gradient(135deg, {color}22 0%, {color}05 100%);
-                    box-shadow:0 0 30px {color}44;">
-            <div style="width:80px; height:80px; margin:0 auto;">{sig_svg}</div>
-            <h1 style="color:{color}; font-size:3.5rem; margin:10px 0;">{sig}</h1>
-            <p style="color:#888;">{res.get('ticker', ticker)} • Confidence: {res.get('confidence', 0)*100:.1f}%</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Current", f"${res['current_close']:.2f}")
-        c2.metric("Predicted", f"${res['predicted_close']:.2f}", f"{res.get('pct_change', 0):+.2f}%")
-        c3.metric("Position Size", f"£{res.get('position_value', 0):.2f}")
-
-# ───────────────────────────────────────────────────────────
-# TAB 4: BACKTEST BATCAVE
-# ───────────────────────────────────────────────────────────
-with tab4:
-    st.markdown(f"""
-    <div style="text-align:center; padding-bottom:20px;">
-        <div class="bat-icon-lg">{BAT_CHART_SVG}</div>
-        <h1 style="margin-bottom:5px;">Backtest Batcave</h1>
-    </div>
-    """, unsafe_allow_html=True)
-
-    backtest_btn = st.button("🦇 RUN SIMULATION", use_container_width=True)
-
-    if backtest_btn:
-        try:
-            from backtest_engine import run_full_backtest
-            with st.spinner("🦇 Simulating trades..."):
-                bt_r, metrics, bt_fig = run_full_backtest(config=config)
-                st.session_state["backtest_metrics"] = metrics
-                st.session_state["backtest_result"] = bt_r
-        except Exception as e:
-            st.error(f"❌ Backtest failed: {e}")
-
-    if "backtest_metrics" in st.session_state:
-        m = st.session_state["backtest_metrics"]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Sharpe Ratio", f"{m['sharpe_ratio']:.3f}")
-        c2.metric("Total Return", f"{m['total_return_pct']:+.2f}%")
-        c3.metric("Max Drawdown", f"{m['max_drawdown_pct']:.2f}%")
-        c4.metric("Win Rate", f"{m['win_rate_pct']:.1f}%")
-
-        path = os.path.join(BASE_DIR, config.get("backtest_plot_path", "backtest_plot.png"))
-        if os.path.exists(path):
-            st.image(path, use_container_width=True)
-
-# ───────────────────────────────────────────────────────────
-# TAB 5: NIGHT PATROL
-# ───────────────────────────────────────────────────────────
-with tab5:
-    st.markdown(f"""
-    <div style="text-align:center; padding-bottom:20px;">
-        <div class="bat-icon-lg">{BAT_CLOCK_SVG}</div>
-        <h1 style="margin-bottom:5px;">Night Patrol</h1>
-        <p style="color:#888;">Automated Execution</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"""
-        <div class="gothic-card">
-            <div style="width:24px; float:left; margin-right:10px;">{BAT_CLOCK_SVG}</div>
-            <h3 style="color:#00aaff; margin-top:0;">Scheduler</h3>
-            <p style="color:#e0e0e0;">Execute at <span style="color:#f1c40f;">{config.get("schedule_time", "03:00")} GMT</span></p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"""
-        <div class="gothic-card">
-             <div style="width:24px; float:left; margin-right:10px;">{BAT_MAIL_SVG}</div>
-            <h3 style="color:#00aaff; margin-top:0;">Alerts</h3>
-            <p style="color:#e0e0e0;">Email alerts: {"configured" if _EMAIL_READY else "not configured on this server"}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    if st.button("🦇 RUN MANUAL PATROL (Execute Pipeline)", disabled=not _EMAIL_READY,
-                 help=None if _EMAIL_READY else "Needs BATMAN_EMAIL_* environment variables; disabled on the public demo."):
-         try:
-             from deploy_night_patrol import daily_patrol
-             with st.spinner("🌙 Executing patrol..."):
-                 daily_patrol(config=config)
-             st.success("✅ Patrol complete. Check email.")
-         except Exception as e:
-             st.error(f"❌ Failed: {e}")
-
-# ───────────────────────────────────────────────────────────
-# TAB 6: USAS SCANNER
-# ───────────────────────────────────────────────────────────
-with tab6:
-    st.markdown(f"""
-    <div style="text-align:center; padding-bottom:20px;">
-        <div class="bat-icon-lg">{BAT_SIGNAL_SVG}</div>
-        <h1 style="margin-bottom:5px;">USAS Scanner</h1>
-        <p style="color:#888;">Walk-Forward Validation (1 Year) • High Precision</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    c_sel, c_btn = st.columns([1, 2])
-    with c_sel:
-        scan_ticker = st.selectbox("Ticker", ["USAS", "AAPL", "TSLA", "BTC-USD"], index=0)
-    
-    with c_btn:
-        st.write("") # spacer
-        st.write("")
-        scan_btn = st.button("🦇 SCAN LAST YEAR (WALK-FORWARD)", use_container_width=True)
-
-    if scan_btn:
-        try:
-            from model_core import walk_forward_validation
-            # from backtest_engine import run_walk_forward_backtest # Binary backtest not strictly same
-            
-            with st.spinner(f"🦇 Running Binary Walk-Forward on {scan_ticker} (2025-Now)..."):
-                config = load_config()
-                # Run WF
-                res_df, acc, _ = walk_forward_validation(ticker=scan_ticker, config=config)
-                st.session_state["wf_results"] = res_df
-                st.session_state["wf_acc"] = acc
-                
-        except Exception as e:
-            st.error(f"❌ Scan Failed: {e}")
-
-    if "wf_results" in st.session_state:
-        res_df = st.session_state["wf_results"]
-        acc = st.session_state["wf_acc"]
-        
-        target_acc = config.get("min_accuracy_target", 0.60)
-        
-        # Metrics
-        m1, m2 = st.columns(2)
-        m1.metric("Directional Accuracy", f"{acc:.1%}", 
-                 delta="TARGET DESTROYED" if acc >= target_acc else "BELOW TARGET",
-                 delta_color="normal" if acc >= target_acc else "inverse")
-        m2.metric("Total Predictions", len(res_df))
-
-        # Alert
-        if acc < target_acc:
-            st.error(f"⚠️ Accuracy {acc:.1%} < {target_acc:.1%}: Failed. Shadows win.")
-        else:
-            st.success("✅ Model is LETHAL. Market is clear.")
-
-        # Plot Rolling Accuracy (The Yellow Line)
-        st.markdown("### 📈 Rolling 50-Day Accuracy")
-        if "RollingAcc" in res_df.columns:
-            roll_acc = res_df["RollingAcc"]
-            
-            fig_acc, ax_acc = plt.subplots(figsize=(10, 4))
-            ax_acc.plot(res_df.index, roll_acc, color="#f1c40f", linewidth=2.5, label="Bat-Signal (50d)")
-            ax_acc.axhline(y=target_acc, color="#c0392b", linestyle="--", alpha=0.8, label="Kill Switch (60%)")
-            
-            # Styling
-            ax_acc.set_title("Rolling 50-Day Accuracy Curve", color="#e0e0e0")
-            ax_acc.set_facecolor("#0a0a0a")
-            fig_acc.patch.set_facecolor("#0a0a0a")
-            ax_acc.tick_params(colors="#e0e0e0")
-            for spine in ax_acc.spines.values(): spine.set_color("#333")
-            plt.legend(facecolor="#1a1a2e", edgecolor="#333", labelcolor="#e0e0e0")
-            st.pyplot(fig_acc)
-
-        # Data Table
-        st.markdown("### 📋 Prediction Log")
-        # Show Prob, Target, Hit
-        st.dataframe(res_df[["Close", "Probability", "Target", "Hit", "RollingAcc"]].style.format({
-            "Close": "${:.2f}", 
-            "Probability": "{:.1%}",
-            "RollingAcc": "{:.1%}"
-        }).background_gradient(subset=["Probability"], cmap="gray"))
-
-st.markdown("---")
-st.markdown("""
-<div style="text-align:center; padding:30px 0;">
-    <p style="color:#444; font-size:10px; font-style:italic;">
-        "The night is darkest just before the dawn."
-    </p>
+# ───────────────────────────── header ─────────────────────────────
+src_pill = ('<span class="pill"><i class="dot"></i>Live Yahoo Finance data</span>' if source == "live" else
+            '<span class="pill warn"><i class="dot sample"></i>Offline snapshot (live data unavailable)</span>')
+st.markdown(f"""
+<div class="top">
+  <div>
+    <p class="eyebrow">Batman AI · Signal Lab · {html.escape(ticker)} · data to {snap['date']:%d %b %Y}</p>
+    <p class="word">Signal <span>Lab</span></p>
+  </div>
+  <div class="top-links">
+    {src_pill}
+    <a class="pill" href="https://github.com/GOUTHMNN/batman-ai-trading" target="_blank">Code ↗</a>
+    <a class="pill" href="https://goutham.work" target="_blank">goutham.work ↗</a>
+  </div>
 </div>
 """, unsafe_allow_html=True)
+
+
+def kpi(label, value, sub="", cls=""):
+    return f'<div class="kpi"><p class="eyebrow">{label}</p><div class="v {cls}">{value}</div><div class="s">{sub}</div></div>'
+
+
+st.markdown('<div class="kpis">' + "".join([
+    kpi("Last close", f"{snap['close']:,.2f}", f"{snap['date']:%a %d %b}"),
+    kpi("1 day", pct(snap["chg_1d"]), "close to close", "up" if snap["chg_1d"] >= 0 else "down"),
+    kpi("5 days", pct(snap["chg_5d"]), "week to date", "up" if snap["chg_5d"] >= 0 else "down"),
+    kpi("Volatility", pct(snap["vol_20d"], 0, False), "20-day, annualised"),
+    kpi("RSI (14)", f"{snap['rsi']:.0f}", "above 200-day SMA" if snap["above_sma200"] else "below 200-day SMA",
+        "purple"),
+]) + "</div>", unsafe_allow_html=True)
+
+with st.spinner("Running walk-forward evaluation (training a model every few weeks of history)…"):
+    wf = get_walk_forward(ticker, start, train_window, retrain_every, balanced)
+ev = core.evaluate(wf)
+
+tab_market, tab_model, tab_signal, tab_bt, tab_method = st.tabs(
+    ["Market", "Model vs baseline", "Today's signal", "Backtest", "How it works"])
+
+# ───────────────────────────── market ─────────────────────────────
+with tab_market:
+    view = df.tail(504)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.76, 0.24], vertical_spacing=0.03)
+    fig.add_trace(go.Candlestick(x=view.index, open=view["Open"], high=view["High"], low=view["Low"], close=view["Close"],
+                                 name="Price", increasing_line_color=GREEN, decreasing_line_color=RED,
+                                 increasing_fillcolor=GREEN, decreasing_fillcolor=RED), row=1, col=1)
+    for col, colour in (("SMA_50", PURPLE), ("SMA_200", AMBER)):
+        if col in view:
+            fig.add_trace(go.Scatter(x=view.index, y=view[col], name=col.replace("_", " "), line=dict(color=colour, width=1.6)), row=1, col=1)
+    fig.add_trace(go.Bar(x=view.index, y=view["Volume"], name="Volume", marker_color="#2a3040", showlegend=False), row=2, col=1)
+    fig.update_layout(xaxis_rangeslider_visible=False)
+    st.plotly_chart(plot_layout(fig, 520), width="stretch", config={"displayModeBar": False})
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown(f"""<div class="card"><p class="eyebrow">Why this is hard</p>
+        <p style="margin:.4rem 0 0">Over this history <b>{ticker}</b> closed higher on only <b>{snap['up_share']:.0%}</b> of days.
+        A model that always says "{'up' if snap['up_share'] >= .5 else 'down'}" is right {max(snap['up_share'], 1 - snap['up_share']):.0%} of the time
+        without learning anything, so accuracy alone is a trap. The next tab compares the model with that baseline.</p></div>""",
+                    unsafe_allow_html=True)
+    with c2:
+        last = df.iloc[-1]
+        metal = []
+        if "GC=F_Close" in df:
+            metal.append(f"<div><span>Gold (GC=F)</span><span>{last['GC=F_Close']:,.0f} · {'rising' if last.get('GC=F_SMA_Delta', 0) > 0 else 'falling'}</span></div>")
+        if "SI=F_Close" in df:
+            metal.append(f"<div><span>Silver (SI=F)</span><span>{last['SI=F_Close']:,.2f} · {'rising' if last.get('SI=F_SMA_Delta', 0) > 0 else 'falling'}</span></div>")
+        st.markdown(f"""<div class="card"><p class="eyebrow">Context</p><div class="rows">
+        <div><span>Rows of history</span><span>{len(df):,}</span></div>
+        <div><span>Features per day</span><span>{len(core.feature_columns(df))}</span></div>
+        {''.join(metal)}
+        <div><span>Volume vs 20-day average</span><span>{last.get('Volume_Delta', float('nan')):.2f}×</span></div>
+        </div></div>""", unsafe_allow_html=True)
+
+# ─────────────────────────── model vs baseline ───────────────────────────
+with tab_model:
+    icon = {"good": "✅", "neutral": "⚖️", "bad": "🧭"}[ev.verdict_level]
+    title = {"good": "Edge detected", "neutral": "Inconclusive", "bad": "No edge"}[ev.verdict_level]
+    st.markdown(f'<div class="verdict {ev.verdict_level}"><div style="font-size:1.6rem">{icon}</div><div><b>{title}</b>{html.escape(ev.verdict)}</div></div>',
+                unsafe_allow_html=True)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=ev.rolling.index, y=ev.rolling["Baseline"], name="Always-majority baseline",
+                             line=dict(color=MUTE, width=1.5, dash="dash")))
+    fig.add_trace(go.Scatter(x=ev.rolling.index, y=ev.rolling["XGBoost"], name="XGBoost walk-forward",
+                             line=dict(color=PURPLE, width=2.4)))
+    fig.add_hline(y=0.5, line=dict(color="#333a48", width=1))
+    fig.update_yaxes(tickformat=".0%", title="Accuracy, rolling 120 days")
+    st.plotly_chart(plot_layout(fig, 360), width="stretch", config={"displayModeBar": False})
+    tbl = pd.DataFrame({
+        "Accuracy": ev.table["Accuracy"].map("{:.1%}".format),
+        "Balanced accuracy": ev.table["Balanced accuracy"].map("{:.1%}".format),
+        "F1 (up days)": ev.table["F1 (up days)"].map("{:.3f}".format),
+        "ROC AUC": ev.table["ROC AUC"].map(lambda v: "–" if pd.isna(v) else f"{v:.3f}"),
+        "Predicts up": ev.table["Predicts up"].map("{:.0%}".format),
+    })
+    st.dataframe(tbl, width="stretch")
+    st.markdown(f'<p class="note">{len(wf):,} out-of-sample days, {wf.index.min():%b %Y} to {wf.index.max():%b %Y}. '
+                f'Balanced accuracy is the fairest single number here: 50% means no skill whatever the up/down mix. '
+                f'One-sided binomial test against the baseline: p = {ev.p_value:.3f}.</p>', unsafe_allow_html=True)
+
+# ─────────────────────────── today's signal ───────────────────────────
+with tab_signal:
+    sig = core.todays_signal(df, config, train_window, balanced)
+    c1, c2 = st.columns([0.9, 1.4])
+    with c1:
+        st.markdown(f"""<div class="card signal {sig['signal']}">
+          <p class="eyebrow">Signal for the next session · {sig['date']:%d %b %Y}</p>
+          <div class="big">{sig['signal']}</div>
+          <p class="mono" style="color:var(--mute);margin:.6rem 0 0">P(up) = {sig['prob']:.1%}</p>
+        </div>""", unsafe_allow_html=True)
+        r = sig["risk"]
+        if sig["signal"] == "HOLD":
+            st.markdown('<div class="card" style="margin-top:12px"><p class="eyebrow">Position sizing</p>'
+                        '<p class="note" style="margin:.4rem 0 0">No trade. Every gate has to pass before the system takes a position.</p></div>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(f"""<div class="card" style="margin-top:12px"><p class="eyebrow">Position sizing</p><div class="rows">
+              <div><span>Entry</span><span>{r['entry_price']:,.2f}</span></div>
+              <div><span>Stop-loss</span><span>{r['stop_loss']:,.2f}</span></div>
+              <div><span>Take-profit</span><span>{r['take_profit']:,.2f}</span></div>
+              <div><span>Shares</span><span>{r['shares']:,}</span></div>
+              <div><span>Capital at risk</span><span>£{r['risk_amount']:,.2f}</span></div>
+            </div></div>""", unsafe_allow_html=True)
+    with c2:
+        gates = "".join(
+            f'<div class="gate"><span>{"<span class=ok>✓</span>" if g[3] else "<span class=no>✕</span>"}&nbsp; {g[0]}</span><span class="r">{g[4]}</span></div>'
+            for g in sig["gates"])
+        st.markdown(f'<div class="card"><p class="eyebrow">Gates (BUY needs all five)</p>{gates}</div>', unsafe_allow_html=True)
+        imp = sig["importances"][::-1]
+        fig = go.Figure(go.Bar(x=imp.values, y=imp.index, orientation="h", marker_color=PURPLE,
+                               text=[f"{v:.1%}" for v in imp.values], textposition="outside",
+                               textfont=dict(family="JetBrains Mono", color=MUTE, size=11)))
+        fig.update_xaxes(showticklabels=False, range=[0, float(imp.max()) * 1.25])
+        fig.update_layout(title=dict(text="What the latest model leans on", font=dict(size=13, color=MUTE)))
+        st.plotly_chart(plot_layout(fig, 300, legend=False), width="stretch", config={"displayModeBar": False})
+
+# ───────────────────────────── backtest ─────────────────────────────
+with tab_bt:
+    gate = core.strict_gate_series(df, config) if strict else None
+    bt = core.backtest(wf, threshold, cost_bps, gate)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=bt["curve"].index, y=bt["curve"]["Buy & hold"], name="Buy & hold", line=dict(color=MUTE, width=1.5)))
+    fig.add_trace(go.Scatter(x=bt["curve"].index, y=bt["curve"]["Strategy"], name="Strategy", line=dict(color=PURPLE, width=2.4),
+                             fill="tozeroy", fillcolor="rgba(177,140,255,.06)"))
+    fig.update_yaxes(title="Growth of £1", tickprefix="£")
+    st.plotly_chart(plot_layout(fig, 380), width="stretch", config={"displayModeBar": False})
+    m = bt["metrics"]
+    cols = st.columns(4)
+    for col, (label, key, fmt) in zip(cols, [("Total return", "Total return", "pct"), ("Annualised", "Annualised return", "pct"),
+                                            ("Sharpe", "Sharpe ratio", "num"), ("Max drawdown", "Max drawdown", "pct")]):
+        s, h = m.loc[key, "Strategy"], m.loc[key, "Buy & hold"]
+        val = pct(s) if fmt == "pct" else f"{s:.2f}"
+        ref = pct(h) if fmt == "pct" else f"{h:.2f}"
+        col.markdown(kpi(label, val, f"buy & hold {ref}", "up" if s >= h else "down"), unsafe_allow_html=True)
+    st.markdown(f'<p class="note">Long-or-cash: hold the next session when P(up) ≥ {threshold:.2f}'
+                f'{" and all filters pass" if strict else ""}. In the market {bt["exposure"]:.0%} of days, '
+                f'{bt["trades"]} entries, hit rate {pct(bt["win_rate"], 0, False)}. Costs of {cost_bps} bps are charged on every switch. '
+                f'Past performance in a backtest says little about the future.</p>', unsafe_allow_html=True)
+
+# ───────────────────────────── method ─────────────────────────────
+with tab_method:
+    st.markdown("""
+<div class="card">
+<p class="eyebrow">Pipeline</p>
+<div class="rows">
+<div><span>1 · Data</span><span>Daily prices from Yahoo Finance, plus gold and silver futures</span></div>
+<div><span>2 · Features</span><span>45 per day: trend, momentum, volatility, volume, lags, metals, price-based sentiment</span></div>
+<div><span>3 · Target</span><span>Does tomorrow close above today?</span></div>
+<div><span>4 · Model</span><span>XGBoost, retrained on a rolling window (walk-forward)</span></div>
+<div><span>5 · Test</span><span>Every prediction is made on a day the model has never seen</span></div>
+<div><span>6 · Judge</span><span>Against always-majority and repeat-yesterday baselines</span></div>
+</div></div>
+""", unsafe_allow_html=True)
+    st.markdown("""
+#### Why the baselines matter
+The first version of this project reported 60% accuracy on USAS and looked like a success. It wasn't: only 40% of days
+closed up, so always predicting "down" also scores 60%. The model had learned to say "down" almost every day.
+Class balancing and balanced accuracy fixed the measurement, and the honest result was no edge. This dashboard shows that
+test live for any ticker, so you can see for yourself whether the signal is real.
+
+#### What's in the code
+An LSTM with attention (PyTorch), the XGBoost model, a cost-aware backtester and a scheduled overnight run that emails the
+day's signal. The full write-up and tests are on [GitHub](https://github.com/GOUTHMNN/batman-ai-trading).
+""")

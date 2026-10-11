@@ -1,15 +1,16 @@
---extra-index-url https://download.pytorch.org/whl/cpu
+# Dashboard + research pipeline (what Streamlit Cloud installs)
 numpy
 pandas
 scikit-learn
 scipy
 xgboost
-torch
 ta
 yfinance
 pyyaml
 joblib
 matplotlib
+plotly
 schedule
 streamlit
 pytest
+# The LSTM (model_core.py) also needs PyTorch: pip install torch

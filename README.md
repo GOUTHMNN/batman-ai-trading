@@ -4,6 +4,8 @@ An end-to-end machine-learning trading system for one stock (USAS, Americas Gold
 
 **The headline result is negative, and that is the point of this README.** After fixing how the model was evaluated, it has no measurable edge in predicting next-day direction. The engineering is solid; the signal isn't there. Details below.
 
+**Live dashboard: [batman-ai-trading.streamlit.app](https://batman-ai-trading.streamlit.app)** · pick any ticker, retrain the model walk-forward, and see whether it beats the baselines, today's gated signal and a cost-aware backtest.
+
 ![Walk-forward accuracy vs baseline](results/walk_forward_vs_baseline.png)
 
 ## What it does
@@ -16,7 +18,7 @@ An end-to-end machine-learning trading system for one stock (USAS, Americas Gold
 | Signals and risk | `signals_risk.py` | BUY only when the model is confident (P ≥ 0.75), metals are trending up, volume is 1.5× normal and sentiment agrees. 1% account risk per trade, 1.5% stop-loss, 3% take-profit. |
 | Backtest | `backtest_engine.py` | Equity curve with 0.1% commission and 0.05% slippage; reports return, Sharpe, max drawdown, win rate and profit factor. |
 | Live run | `deploy_night_patrol.py` | Runs daily at 03:00 GMT: fetch, predict, signal, email. |
-| Dashboard | `ui_gotham.py` | Streamlit UI (`run_app.bat` on Windows). |
+| Dashboard | `ui_gotham.py`, `app_core.py` | "Signal Lab" Streamlit app: market view, live model-vs-baseline test, today's signal with every gate shown, and a backtest with adjustable costs (`run_app.bat` on Windows). Falls back to a bundled USAS snapshot if Yahoo Finance is unreachable. |
 
 ## Honest results
 
@@ -44,11 +46,12 @@ Next steps I'd try: longer horizons (5 to 20 days), returns-based targets with t
 ## Run it
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt           # add `pip install torch` for the LSTM
 cp config.example.yaml config.yaml        # optional: change ticker, risk settings
 python data_pipeline.py USAS              # downloads prices and writes data.csv
 python evaluate.py                        # honest walk-forward report -> results/
-pytest                                    # 10 tests (LSTM tests skip without PyTorch)
+pytest                                    # 14 tests (LSTM tests skip without PyTorch)
+streamlit run ui_gotham.py                # the dashboard
 python main.py --help                     # train, predict, backtest, deploy
 ```
 
